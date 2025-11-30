@@ -1,0 +1,10 @@
+# Node / frontend-backend
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+*.log
+
+# Tests temporales
+tests/coverage/
