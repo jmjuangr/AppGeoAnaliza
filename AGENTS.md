@@ -1,497 +1,306 @@
+````markdown
 # AGENTS.md
 
-Instrucciones para crear una app que consuma la API de Google Maps
-(centrada en el SKU **Geolocation** y en obtener puntos geolocalizados por municipio, zonas y barrios)
+Guía para agentes (IA o humanos) que desarrollan esta aplicación.
 
 ---
 
-## 1. Objetivo de la app
+## 1. Objetivo del proyecto
 
-La app debe permitir:
+El propósito de este proyecto es construir **una aplicación web simple**, ejecutada desde `index.html`, llamada **AppGeoAnaliza**, que permita:
 
-1. Introducir un **municipio** (por ejemplo, “Sevilla, España”).
-2. Obtener un conjunto de **puntos geolocalizados** dentro de ese municipio, con al menos:
+- Introducir un **municipio** (ej.: "Zaragoza").
+- Opcionalmente introducir un **barrio** dentro del municipio.
+- Indicar cuántos **puntos geolocalizados** se desean obtener.
+- Consultar **OpenStreetMap** (Nominatim + Overpass API) para obtener:
+  - Calle / dirección (si existe)
+  - Latitud
+  - Longitud
+- Devolver **N puntos**, pudiendo ser aleatorios.
+- Mostrar los resultados en la interfaz web.
 
-   - `lat` (latitud)
-   - `lng` (longitud)
-   - nombre o descripción del punto
-   - información de **zona / barrio / subzona** cuando sea posible
-
-3. Opcionalmente, obtener también la **ubicación del dispositivo** del usuario usando el SKU **Geolocation** (para centrar el mapa en su posición).
-
-> ⚠️ Importante:
-> El SKU **Geolocation** sirve para obtener la **ubicación de un dispositivo** usando antenas y Wi-Fi, **no** para listar puntos dentro de una ciudad.
-> Para “Sevilla → muchos puntos con lat/lng y barrios” se necesitarán sobre todo:
->
-> - **Geocoding API** (para convertir el nombre del municipio en coordenadas y límites) ([Google for Developers][1])
-> - **Places API** (para buscar lugares dentro de ese municipio). ([Google Maps Platform][2])
-
-Este archivo explica cómo combinar todo para que cualquier desarrollador o agente de IA pueda implementar la app.
+El proyecto debe ser modular, fácil de extender y entendible por agentes.
 
 ---
 
-## 2. Productos de Google Maps Platform que se usarán
+## 2. Estructura del proyecto
 
-### 2.1. Geolocation API (SKU: Geolocation)
+```txt
+/
+├─ frontend/
+│  ├─ index.html
+│  ├─ src/
+│  │  ├─ main.js
+│  │  ├─ api.js
+│  │  └─ ui.js
+│  └─ styles/
+│     └─ styles.css
+│
+├─ backend/
+│  ├─ src/
+│  │  ├─ server.ts|js
+│  │  ├─ routes/
+│  │  │  └─ points.ts|js
+│  │  ├─ services/
+│  │  │  ├─ nominatim.ts|js
+│  │  │  └─ overpass.ts|js
+│  │  └─ utils/
+│  ├─ package.json
+│  └─ tsconfig.json (si aplica)
+│
+├─ tests/
+│  ├─ backend/
+│  └─ frontend/
+│
+└─ AGENTS.md
+```
+````
 
-**Uso principal en esta app:**
+### Normas para agentes
 
-- Obtener la posición aproximada del dispositivo del usuario (lat/lng + precisión) **sin GPS**, usando redes móviles y Wi-Fi. ([Google for Developers][3])
+- Analizar siempre primero este archivo.
+- No modificar `/frontend/index.html` sin motivo funcional claro.
+- Mantener la lógica de OpenStreetMap siempre dentro del backend.
+- Mantener separación estricta entre frontend y backend.
 
-**Endpoint básico (POST):**
+---
+
+## 3. Reglas de consumo de OpenStreetMap
+
+AppGeoAnaliza debe consumir exclusivamente datos de **OpenStreetMap**, a través de:
+
+- **Nominatim** (geocodificación)
+- **Overpass API** (consulta de puntos dentro de un área)
+
+### 3.1 Nominatim
+
+Usar Nominatim para:
+
+- Convertir un nombre de ciudad en coordenadas + bounding box.
+- Identificar barrios mediante `suburb`, `neighbourhood` o `city_district`.
+
+Toda llamada desde el backend a Nominatim debe incluir este encabezado:
 
 ```http
-POST https://www.googleapis.com/geolocation/v1/geolocate?key=YOUR_API_KEY
-Content-Type: application/json
-
-{
-  "considerIp": true
-  // Opcional: info de torres de telefonía y puntos WiFi
-}
+User-Agent: "AppGeoAnaliza/1.0 (contact: josem.juangracia@gmail.com)"
 ```
 
-**Respuesta JSON típica:**
+Requisitos adicionales:
+
+- Respetar los límites de uso (aprox. 1 petición/segundo hacia la instancia pública).
+- No utilizar Nominatim para geocodificación masiva.
+- Añadir en la interfaz de AppGeoAnaliza la atribución:
+
+  - `Datos geográficos © OpenStreetMap contributors`.
+
+### 3.2 Overpass API
+
+Usar Overpass para:
+
+- Obtener nodos (`node`) dentro del área definida por ciudad o barrio.
+- Filtrar por amenities o nodos generales según las necesidades de AppGeoAnaliza.
+- Seleccionar puntos aleatorios si el usuario solicita N puntos.
+
+Requisitos:
+
+- No hacer consultas excesivamente pesadas o continuas.
+- Configurar también un `User-Agent` identificable, por ejemplo:
+
+```http
+User-Agent: "AppGeoAnaliza/1.0 (contact: josem.juangracia@gmail.com)"
+```
+
+- Todas las consultas deben hacerse desde el backend, nunca desde el frontend.
+
+---
+
+## 4. Backend API Contract
+
+### GET `/api/points`
+
+**Descripción:**
+
+Devuelve puntos geolocalizados obtenidos desde OpenStreetMap para un municipio y, opcionalmente, un barrio.
+
+**Parámetros (query):**
+
+- `city` (obligatorio): nombre del municipio.
+- `neighbourhood` (opcional): nombre del barrio/zona.
+- `limit` (opcional, por defecto 20): número máximo de puntos a devolver.
+
+**Respuesta JSON:**
 
 ```json
 {
-  "location": {
-    "lat": 37.4219983,
-    "lng": -122.084
-  },
-  "accuracy": 1200.4
-}
-```
-
-- `location.lat`: latitud estimada
-- `location.lng`: longitud estimada
-- `accuracy`: radio (en metros) dentro del cual se espera que esté el dispositivo ([Google for Developers][4])
-
-En la app, esta posición se puede usar para:
-
-- Centrar el mapa
-- Sugerir automáticamente un municipio cercano
-
----
-
-### 2.2. Geocoding API
-
-**Objetivo:** convertir un texto como “Sevilla, España” en coordenadas y en la “caja” del municipio (viewport). ([Google for Developers][1])
-
-**Endpoint básico (GET):**
-
-```http
-GET https://maps.googleapis.com/maps/api/geocode/json
-  ?address=Sevilla,España
-  &key=YOUR_API_KEY
-```
-
-**Respuesta JSON (simplificada):**
-
-```json
-{
-  "results": [
+  "city": "Zaragoza",
+  "neighbourhood": "Delicias",
+  "totalAvailable": 134,
+  "returned": 20,
+  "points": [
     {
-      "formatted_address": "Sevilla, España",
-      "geometry": {
-        "location": {
-          "lat": 37.3890924,
-          "lng": -5.9844589
-        },
-        "viewport": {
-          "northeast": { "lat": 37.45, "lng": -5.88 },
-          "southwest": { "lat": 37.33, "lng": -6.05 }
-        }
-      },
-      "address_components": [
-        {
-          "long_name": "Sevilla",
-          "short_name": "Sevilla",
-          "types": ["locality", "political"]
-        },
-        {
-          "long_name": "Sevilla",
-          "short_name": "SE",
-          "types": ["administrative_area_level_2", "political"]
-        },
-        {
-          "long_name": "Andalucía",
-          "short_name": "AN",
-          "types": ["administrative_area_level_1", "political"]
-        },
-        {
-          "long_name": "España",
-          "short_name": "ES",
-          "types": ["country", "political"]
-        }
-      ]
+      "id": "node/123456",
+      "name": "Parque",
+      "street": "Calle Ejemplo 12",
+      "lat": 41.6532,
+      "lng": -0.8903,
+      "source": "osm"
     }
-  ],
-  "status": "OK"
+  ]
 }
 ```
 
-Campos clave:
+### Normas obligatorias para agentes
 
-- `geometry.location.lat` / `geometry.location.lng` → punto principal del municipio
-- `geometry.viewport` → “caja” aproximada de la ciudad (sirve para limitar búsquedas)
-- `address_components` → información jerárquica (localidad, provincia, país, etc.)
-
----
-
-### 2.3. Places API (Text Search / Nearby / Place Details)
-
-**Objetivo:** obtener muchos puntos con lat/lng dentro del municipio.
-
-#### 2.3.1. Places Text Search
-
-Busca lugares por texto (por ejemplo “restaurantes en Sevilla”) y devuelve lat/lng y otros datos. ([Google Maps Platform][2])
-
-**Endpoint (GET):**
-
-```http
-GET https://maps.googleapis.com/maps/api/place/textsearch/json
-  ?query=Sevilla,+España
-  &type=point_of_interest
-  &key=YOUR_API_KEY
-```
-
-> `type` se puede cambiar para obtener solo cierto tipo de puntos:
-> `restaurant`, `park`, `school`, etc.
-
-**Respuesta (simplificada):**
-
-```json
-{
-  "results": [
-    {
-      "name": "Catedral de Sevilla",
-      "formatted_address": "Av. de la Constitución, s/n, 41004 Sevilla, España",
-      "geometry": {
-        "location": {
-          "lat": 37.386,
-          "lng": -5.992
-        }
-      },
-      "types": [
-        "tourist_attraction",
-        "church",
-        "point_of_interest",
-        "establishment"
-      ],
-      "place_id": "ChIJ...id"
-    },
-    {
-      "name": "Plaza de España",
-      "formatted_address": "Av. Isabel la Católica, 41004 Sevilla, España",
-      "geometry": {
-        "location": {
-          "lat": 37.377,
-          "lng": -5.986
-        }
-      },
-      "types": ["tourist_attraction", "point_of_interest", "establishment"],
-      "place_id": "ChIJ...id2"
-    }
-  ],
-  "status": "OK"
-}
-```
-
-Campos clave:
-
-- `results[i].geometry.location.lat`
-- `results[i].geometry.location.lng`
-- `results[i].name`
-- `results[i].formatted_address`
-- `results[i].types`
-- `results[i].place_id` (sirve para pedir más detalles después)
-
-#### 2.3.2. Place Details (para barrios / zonas)
-
-Con el `place_id`, puedes pedir **más detalles** de cada punto. A menudo incluye componentes como `neighborhood` o `sublocality` que puedes usar como “barrio”. ([Google for Developers][5])
-
-**Endpoint (GET):**
-
-```http
-GET https://maps.googleapis.com/maps/api/place/details/json
-  ?place_id=PLACE_ID_AQUI
-  &fields=address_component,geometry,name
-  &key=YOUR_API_KEY
-```
-
-En `address_components` verás elementos con tipos como:
-
-- `"neighborhood"` → barrio
-- `"sublocality"` / `"sublocality_level_1"` → subzona dentro de la ciudad
-- `"locality"` → ciudad
-  Estos campos son los que el agente debe usar para etiquetar “barrios” o zonas.
+- Validar `city` antes de cualquier petición externa.
+- No devolver más puntos que el valor de `limit`.
+- Si `neighbourhood` no se reconoce o no existe, usar toda la ciudad.
+- Controlar errores de red y de Overpass/Nominatim y devolver mensajes claros.
+- No cambiar el formato de respuesta sin actualizar este AGENTS.md.
 
 ---
 
-## 3. Flujo funcional de la app
+## 5. Convenciones de código
 
-### 3.1. Búsqueda por municipio
+### Backend
 
-1. El usuario introduce un municipio: `"Sevilla"`.
-2. La app llama a **Geocoding API** con `address=Sevilla,España`.
-3. Se guarda:
+- Preferido: **TypeScript** (pero se permite JavaScript si está justificado).
+- Mantener código modular, separando:
 
-   - `municipio.lat` / `municipio.lng`
-   - `municipio.viewport` (northeast / southwest)
+  - Rutas (`routes/`)
+  - Servicios externos (`services/`)
+  - Utilidades (`utils/`)
 
-4. Se muestra el municipio centrado en un mapa.
+- Prohibido mezclar lógica de Nominatim/Overpass en la capa de rutas.
+- Funciones con nombres descriptivos (ej.: `fetchCityBoundingBox`, `queryOverpassForNodes`).
 
-### 3.2. Obtención de puntos dentro del municipio
+### Frontend
 
-1. El usuario selecciona un tipo de punto y filtros:
+- JavaScript ES6+ sin frameworks obligatorios.
+- Archivos:
 
-   - Tipo: `restaurant`, `park`, `school`, etc.
-   - Palabra clave opcional: “vegano”, “centro cívico”, etc.
+  - `main.js`: orquestación general (event listeners, flujo principal).
+  - `api.js`: funciones para llamar al backend (`fetchPoints`).
+  - `ui.js`: manipulación del DOM (renderizado de resultados, mensajes de error).
 
-2. La app llama a **Places Text Search**:
+- `index.html` debe contener la estructura básica:
 
-   - `query`: algo como `"restaurant in Sevilla, España"`
-   - Opcional: se puede limitar usando `location` + `radius` alrededor del centro de la ciudad.
+  - Inputs para ciudad, barrio y límite.
+  - Botón de búsqueda.
+  - Contenedor de resultados.
 
-3. Se muestran los resultados como lista + marcadores en el mapa.
+### Nombres y comentarios
 
-### 3.3. Asociar puntos a barrios / zonas
+- Usar nombres claros y no abreviados.
+- Documentar especialmente:
 
-Para cada resultado:
+  - Construcción de consultas Overpass.
+  - Transformación de la respuesta OSM a objetos de tipo `Point`.
 
-1. Se obtiene su `place_id`.
+---
 
-2. Se llama a **Place Details** y se examinan los `address_components`:
+## 6. Modelo de datos de salida
 
-   - Si hay un componente con tipo `"neighborhood"` → usarlo como barrio.
-   - Si no hay neighborhood, usar `"sublocality"` (por ejemplo `"Triana"`, `"Nervión"` si Google lo devuelve).
-   - Siempre guardar también:
+El backend debe transformar los datos de OSM a un modelo homogéneo:
 
-     - `locality` (ciudad)
-     - `administrative_area_level_1` (CCAA)
-     - `country`
+```ts
+type Point = {
+  id: string; // Ej.: "node/123456"
+  name: string | null; // Nombre si existe
+  street: string | null; // Calle o descripción legible, si está disponible
+  lat: number;
+  lng: number;
+  source: "osm";
+};
+```
 
-3. Cada punto se guarda en un JSON interno con estructura similar a:
+Los agentes pueden añadir campos adicionales si son útiles, pero estos son obligatorios.
 
-```json
-{
-  "id": "PLACE_ID_AQUI",
-  "nombre": "Catedral de Sevilla",
-  "lat": 37.386,
-  "lng": -5.992,
-  "direccion": "Av. de la Constitución, s/n, 41004 Sevilla, España",
-  "barrio": "Centro Histórico",
-  "municipio": "Sevilla",
-  "provincia": "Sevilla",
-  "ccaa": "Andalucía",
-  "pais": "España",
-  "tipos": ["tourist_attraction", "point_of_interest"]
-}
+---
+
+## 7. Testing
+
+Los agentes deben asegurar tests, como mínimo, para:
+
+- `services/nominatim`
+- `services/overpass`
+- `routes/points`
+
+Comandos recomendados:
+
+```bash
+npm test
+npm test -- --coverage
 ```
 
 ---
 
-## 4. Especificación técnica para el desarrollador / agente
+## 8. Normas para Pull Requests generados por IA
 
-### 4.1. Requisitos previos
+Un PR debe:
 
-1. Tener un **proyecto en Google Cloud**.
-2. Habilitar las APIs:
+1. Describir claramente qué parte de la funcionalidad de AppGeoAnaliza modifica o añade.
+2. Referenciar las secciones relevantes de este AGENTS.md.
+3. Mantener el PR enfocado en un solo objetivo (no mezclar muchas cosas).
+4. Asegurar que todos los tests pasan.
+5. No romper el contrato público de `/api/points`.
+6. Incluir captura de pantalla o descripción de cambios de UI si afectan al frontend.
 
-   - Geolocation API (SKU: Geolocation)
-   - Geocoding API
-   - Places API
+---
 
-3. Crear una **API key** y **restringirla** (por dominio, IP o app) según el tipo de cliente. ([Google Cloud Documentation][6])
-4. Activar facturación (hay créditos mensuales gratuitos por SKU). ([Google for Developers][7])
+## 9. Checks programáticos antes de merge
 
-### 4.2. Variables de entorno
+Antes de integrar cambios importantes, los agentes deben ejecutar:
 
-El agente debe asumir que la API key **nunca se hardcodea** en el código:
-
-- `GOOGLE_MAPS_API_KEY=...`
-
-En frontend, usar mecanismos seguros (proxy backend o restricciones de dominio).
-
-### 4.3. Endpoints internos sugeridos (backend propio)
-
-Se propone que la app tenga su **propia API** que envuelva a Google Maps, por ejemplo:
-
-#### `GET /api/municipios?nombre=Sevilla`
-
-- Parámetros:
-
-  - `nombre`: string
-
-- Lógica:
-
-  - Llama a Geocoding API con `address={nombre},España`
-  - Devuelve solo los datos necesarios:
-
-```json
-{
-  "nombre": "Sevilla",
-  "lat": 37.3890924,
-  "lng": -5.9844589,
-  "viewport": {
-    "northeast": { "lat": 37.45, "lng": -5.88 },
-    "southwest": { "lat": 37.33, "lng": -6.05 }
-  }
-}
+```bash
+npm run lint
+npm run type-check
+npm run build
 ```
 
-#### `GET /api/puntos`
+Todos los comandos deben finalizar correctamente.
 
-- Parámetros:
+---
 
-  - `municipio`: "Sevilla"
-  - `tipo`: opcional, p.e. "restaurant", "park"
-  - `barrio`: opcional, filtro de texto sobre `neighborhood` o `sublocality`
+## 10. Reglas innegociables
 
-- Lógica:
+- **Nunca usar Google Maps ni APIs de Google en este proyecto.**
 
-  1. Geocoding (si no se tiene ya caché del municipio).
-  2. Places Text Search con `query = tipo + " in " + municipio`.
-  3. Para cada resultado, opcionalmente Place Details para barrio.
-  4. Filtrado por `barrio` si se ha indicado.
+- Nunca llamar directamente a Nominatim u Overpass desde el frontend.
 
-- Respuesta: lista de puntos con la estructura homogénea definida antes.
+- Respetar los límites y políticas de uso de OSM.
 
-#### `POST /api/geolocation`
+- Mantener la estructura de directorios indicada, salvo cambios documentados aquí.
 
-- Parámetros:
+- Mantener el contrato de `/api/points` y el modelo `Point`.
 
-  - Cuerpo vacío o con datos de redes si se quieren usar.
+- Usar siempre el `User-Agent`:
 
-- Lógica:
+  ```http
+  "AppGeoAnaliza/1.0 (contact: josem.juangracia@gmail.com)"
+  ```
 
-  - Llama a Geolocation API.
+  en todas las peticiones a Nominatim y Overpass.
 
-- Respuesta:
+- Mantener en la UI el texto de atribución:
 
-```json
-{
-  "lat": 37.4219983,
-  "lng": -122.084,
-  "accuracy": 1200.4
-}
+  - `Datos geográficos © OpenStreetMap contributors`.
+
+---
+
+## 11. Meta final del proyecto
+
+Producir una aplicación llamada **AppGeoAnaliza** que:
+
+- Se lance desde `index.html`.
+- Permita obtener puntos geolocalizados a partir de:
+
+  - Un municipio (mínimo).
+  - Un barrio (opcional).
+
+- Muestre calle, latitud y longitud de cada punto.
+- Use únicamente datos abiertos de OpenStreetMap.
+- Sea simple, rápida, modular y mantenible por agentes humanos y de IA.
+
 ```
 
----
-
-## 5. Estructura del JSON que la app debe manejar
-
-Estructura mínima recomendada para un “punto geolocalizado”:
-
-```json
-{
-  "id": "string",
-  "nombre": "string",
-  "lat": 0.0,
-  "lng": 0.0,
-  "direccion": "string",
-  "barrio": "string|null",
-  "municipio": "string",
-  "provincia": "string|null",
-  "ccaa": "string|null",
-  "pais": "string",
-  "tipos": ["string"]
-}
 ```
-
-El agente debe:
-
-- Asegurar que **lat/lng** siempre están presentes.
-- Permitir que `barrio`, `provincia` y `ccaa` sean `null` si Google no los devuelve.
-
----
-
-## 6. Barrios y zonas: cómo obtenerlos
-
-1. Cada lugar tiene `address_components` con distintos tipos.
-
-2. Para determinar el barrio:
-
-   Recorrer `address_components` y buscar, en este orden:
-
-   - tipo `"neighborhood"`
-   - tipo `"sublocality"` o `"sublocality_level_1"`
-
-3. Si no se encuentra nada, dejar `barrio: null`.
-
-Ejemplo de `address_components` típico (simplificado):
-
-```json
-"address_components": [
-  { "long_name": "Triana", "types": ["neighborhood", "political"] },
-  { "long_name": "Sevilla", "types": ["locality", "political"] },
-  { "long_name": "Sevilla", "types": ["administrative_area_level_2", "political"] },
-  { "long_name": "Andalucía", "types": ["administrative_area_level_1", "political"] },
-  { "long_name": "España", "types": ["country", "political"] }
-]
-```
-
-Aquí:
-
-- `barrio = "Triana"`
-- `municipio = "Sevilla"`
-- `ccaa = "Andalucía"`
-- `pais = "España"`
-
----
-
-## 7. Costes y cuotas (visión rápida)
-
-- **Modelo de pago**: pay-as-you-go, cada tipo de petición cuenta como un SKU. ([Google for Developers][8])
-- SKUs relevantes:
-
-  - `Geocoding`
-  - `Geolocation`
-  - `Places API` (búsquedas y detalles) ([Google for Developers][7])
-
-- Cada SKU tiene:
-
-  - Precio por cada 1000/10.000 solicitudes
-  - Créditos mensuales gratuitos por SKU (consultar tabla actualizada de Google Maps Platform). ([Google for Developers][8])
-
-El agente debe:
-
-- Implementar **caché** (por ejemplo en BD) para no repetir Geocoding de los mismos municipios constantemente.
-- Limitar el número de resultados y peticiones a Place Details por cada búsqueda para controlar costes.
-
----
-
-## 8. Checklist para el agente / desarrollador
-
-1. **Configurar Google Cloud**
-
-   - [ ] Crear proyecto y activar Geolocation, Geocoding y Places API.
-   - [ ] Generar API key y restringirla.
-
-2. **Backend**
-
-   - [ ] Crear variables de entorno `GOOGLE_MAPS_API_KEY`.
-   - [ ] Implementar endpoint `/api/municipios` usando Geocoding.
-   - [ ] Implementar endpoint `/api/puntos` usando Places Text Search (+ Place Details opcional).
-   - [ ] Implementar endpoint `/api/geolocation` para usar el SKU Geolocation.
-   - [ ] Implementar caché de municipios y de resultados para reducir llamadas.
-
-3. **Lógica de barrios / zonas**
-
-   - [ ] Extraer `neighborhood` / `sublocality` de `address_components`.
-   - [ ] Permitir filtrar puntos por barrio.
-
-4. **Frontend**
-
-   - [ ] Formulario para elegir municipio.
-   - [ ] Opciones de filtro: tipo de lugar, barrio, palabra clave.
-   - [ ] Mapa centrado en el municipio.
-   - [ ] Marcadores para cada punto + panel con lista de resultados.
-
-5. **Control de costes**
-
-   - [ ] Limitar número de resultados por búsqueda (p.ej. 20–50).
-   - [ ] Evitar llamar a Place Details para todos los puntos si no es necesario.
-   - [ ] Monitorizar uso de SKUs en Google Cloud.
-
----
