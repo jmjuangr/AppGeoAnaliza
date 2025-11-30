@@ -21,27 +21,39 @@ export function renderPoints(points) {
     return;
   }
 
-  points.forEach((point) => {
-    const card = document.createElement('article');
-    card.className = 'card';
-
-    const title = document.createElement('h3');
-    title.className = 'card-title';
-    title.textContent = point.name || 'Punto sin nombre';
-
-    const street = document.createElement('p');
-    street.className = 'card-meta';
-    street.textContent = point.street || 'Dirección no disponible';
-
-    const coords = document.createElement('p');
-    coords.className = 'card-meta';
-    coords.textContent = `Lat/Lng: ${formatCoords(point.lat, point.lng)}`;
-
-    card.appendChild(title);
-    card.appendChild(street);
-    card.appendChild(coords);
-    resultsList.appendChild(card);
+  const table = document.createElement('table');
+  table.className = 'results-table';
+  const thead = document.createElement('thead');
+  const headerRow = document.createElement('tr');
+  ['Nombre', 'Calle', 'Latitud', 'Longitud'].forEach((label) => {
+    const th = document.createElement('th');
+    th.textContent = label;
+    headerRow.appendChild(th);
   });
+  thead.appendChild(headerRow);
+
+  const tbody = document.createElement('tbody');
+  points.forEach((point) => {
+    const row = document.createElement('tr');
+    const nameCell = document.createElement('td');
+    nameCell.textContent = point.name || 'Punto sin nombre';
+
+    const streetCell = document.createElement('td');
+    streetCell.textContent = point.street || 'Dirección no disponible';
+
+    const latCell = document.createElement('td');
+    latCell.textContent = point.lat.toFixed(5);
+
+    const lngCell = document.createElement('td');
+    lngCell.textContent = point.lng.toFixed(5);
+
+    [nameCell, streetCell, latCell, lngCell].forEach((cell) => row.appendChild(cell));
+    tbody.appendChild(row);
+  });
+
+  table.appendChild(thead);
+  table.appendChild(tbody);
+  resultsList.appendChild(table);
 }
 
 export function clearResults() {

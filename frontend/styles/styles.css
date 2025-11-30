@@ -129,26 +129,7 @@ input:focus {
 }
 
 .results-list {
-  display: grid;
-  gap: 10px;
-}
-
-.card {
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: #0b1221;
-}
-
-.card-title {
-  margin: 0 0 4px;
-  font-weight: 700;
-}
-
-.card-meta {
-  margin: 0;
-  color: var(--muted);
-  font-size: 14px;
+  display: block;
 }
 
 .meta {
@@ -159,6 +140,43 @@ input:focus {
   color: var(--muted);
   font-size: 12px;
   margin: 0;
+}
+
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0b1221;
+}
+
+.results-table th,
+.results-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.results-table th {
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.results-table tr:last-child td {
+  border-bottom: none;
+}
+
+.results-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+@media (max-width: 640px) {
+  .results-table th,
+  .results-table td {
+    padding: 8px 10px;
+  }
 }
 
 @media (max-width: 640px) {
