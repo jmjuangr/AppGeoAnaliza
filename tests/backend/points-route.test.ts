@@ -63,7 +63,7 @@ describe('routes /api/points', () => {
       totalAvailable: 2,
       points: [
         { id: 'node/1', name: 'Parque', street: 'Calle 1', lat: 41.1, lng: -0.9, source: 'osm' },
-        { id: 'node/2', name: 'Plaza', street: null, lat: 41.2, lng: -0.8, source: 'osm' }
+        { id: 'node/2', name: 'Plaza', street: 'Calle 2', lat: 41.2, lng: -0.8, source: 'osm' }
       ]
     });
 
