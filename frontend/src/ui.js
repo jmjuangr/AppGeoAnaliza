@@ -22,7 +22,6 @@ export function renderPoints(points) {
 
   if (!currentPoints || currentPoints.length === 0) {
     resultsList.innerHTML = '<p class="meta">Sin resultados para esta búsqueda.</p>';
-    if (exportButton) exportButton.disabled = false; // puede exportar "vacío" si quisieras, pero mejor:
     if (exportButton) exportButton.disabled = true;
     return;
   }
@@ -48,10 +47,10 @@ export function renderPoints(points) {
     streetCell.textContent = point.street || 'Dirección no disponible';
 
     const latCell = document.createElement('td');
-    latCell.textContent = point.lat.toFixed(5);
+    latCell.textContent = point.lat.toFixed(5); // en pantalla, con punto
 
     const lngCell = document.createElement('td');
-    lngCell.textContent = point.lng.toFixed(5);
+    lngCell.textContent = point.lng.toFixed(5); // en pantalla, con punto
 
     [nameCell, streetCell, latCell, lngCell].forEach((cell) => row.appendChild(cell));
     tbody.appendChild(row);
@@ -71,7 +70,14 @@ export function clearResults() {
   if (exportButton) exportButton.disabled = true;
 }
 
-// Escapa valores para CSV (usamos ; como separador típico en es-ES)
+// 👉 Formateo numérico para CSV en locale es-ES: decimal con coma
+function formatNumberForCsv(value) {
+  if (typeof value !== 'number') return '';
+  // 37.37398 -> "37,37398"
+  return value.toFixed(5).replace('.', ',');
+}
+
+// Escapa valores para CSV (usamos ; como separador)
 function escapeCSV(value) {
   const str = String(value ?? '');
   if (str.includes('"') || str.includes(';') || str.includes(',') || str.includes('\n')) {
@@ -90,15 +96,17 @@ export function exportCSV() {
   const rows = currentPoints.map((point) => [
     point.name || 'Punto sin nombre',
     point.street || 'Dirección no disponible',
-    point.lat.toFixed(5),
-    point.lng.toFixed(5)
+    formatNumberForCsv(point.lat),
+    formatNumberForCsv(point.lng)
   ]);
 
   const csvContent = [headers, ...rows]
     .map((row) => row.map(escapeCSV).join(';')) // separador ;
     .join('\r\n');
 
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  // 👉 Añadimos BOM para que Excel reconozca UTF-8 y no destroce los acentos
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
 
   const link = document.createElement('a');
