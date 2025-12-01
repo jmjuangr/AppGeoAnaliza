@@ -1,10 +1,17 @@
 import { fetchPoints } from './api.js';
-import { clearResults, renderMeta, renderPoints, setStatus } from './ui.js';
+import {
+  clearResults,
+  renderMeta,
+  renderPoints,
+  setStatus,
+  exportCSV
+} from './ui.js';
 
 const form = document.getElementById('search-form');
 const cityInput = document.getElementById('city');
 const neighbourhoodInput = document.getElementById('neighbourhood');
 const limitInput = document.getElementById('limit');
+const exportButton = document.getElementById('export-btn');
 
 const parseLimit = (value) => {
   const parsed = parseInt(value, 10);
@@ -40,5 +47,13 @@ form.addEventListener('submit', async (event) => {
     setStatus('');
   } catch (error) {
     setStatus(error.message || 'No se pudo obtener puntos', true);
+  }
+});
+
+exportButton.addEventListener('click', () => {
+  try {
+    exportCSV();
+  } catch (error) {
+    setStatus('No se pudo exportar el CSV', true);
   }
 });
