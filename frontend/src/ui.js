@@ -1,8 +1,10 @@
 const resultsList = document.getElementById('results-list');
 const resultsMeta = document.getElementById('results-meta');
 const statusMessage = document.getElementById('status-message');
+const exportButton = document.getElementById('export-btn');
 
-const formatCoords = (lat, lng) => `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+// Guardamos los últimos puntos obtenidos para poder exportarlos
+let currentPoints = [];
 
 export function setStatus(message, isError = false) {
   statusMessage.textContent = message;
@@ -16,8 +18,12 @@ export function renderMeta({ city, neighbourhood, totalAvailable, returned }) {
 
 export function renderPoints(points) {
   resultsList.innerHTML = '';
-  if (!points || points.length === 0) {
+  currentPoints = points || [];
+
+  if (!currentPoints || currentPoints.length === 0) {
     resultsList.innerHTML = '<p class="meta">Sin resultados para esta búsqueda.</p>';
+    if (exportButton) exportButton.disabled = false; // puede exportar "vacío" si quisieras, pero mejor:
+    if (exportButton) exportButton.disabled = true;
     return;
   }
 
@@ -33,7 +39,7 @@ export function renderPoints(points) {
   thead.appendChild(headerRow);
 
   const tbody = document.createElement('tbody');
-  points.forEach((point) => {
+  currentPoints.forEach((point) => {
     const row = document.createElement('tr');
     const nameCell = document.createElement('td');
     nameCell.textContent = point.name || 'Punto sin nombre';
@@ -54,9 +60,52 @@ export function renderPoints(points) {
   table.appendChild(thead);
   table.appendChild(tbody);
   resultsList.appendChild(table);
+
+  if (exportButton) exportButton.disabled = false;
 }
 
 export function clearResults() {
   resultsList.innerHTML = '';
   resultsMeta.textContent = '';
+  currentPoints = [];
+  if (exportButton) exportButton.disabled = true;
+}
+
+// Escapa valores para CSV (usamos ; como separador típico en es-ES)
+function escapeCSV(value) {
+  const str = String(value ?? '');
+  if (str.includes('"') || str.includes(';') || str.includes(',') || str.includes('\n')) {
+    return '"' + str.replace(/"/g, '""') + '"';
+  }
+  return str;
+}
+
+export function exportCSV() {
+  if (!currentPoints || !currentPoints.length) {
+    return;
+  }
+
+  const headers = ['Nombre', 'Calle', 'Latitud', 'Longitud'];
+
+  const rows = currentPoints.map((point) => [
+    point.name || 'Punto sin nombre',
+    point.street || 'Dirección no disponible',
+    point.lat.toFixed(5),
+    point.lng.toFixed(5)
+  ]);
+
+  const csvContent = [headers, ...rows]
+    .map((row) => row.map(escapeCSV).join(';')) // separador ;
+    .join('\r\n');
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'puntos.csv';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
