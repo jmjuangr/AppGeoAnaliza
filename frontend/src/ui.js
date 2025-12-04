@@ -6,7 +6,7 @@ const resultsList = document.getElementById('results-list');
 const resultsMeta = document.getElementById('results-meta');
 const statusMessage = document.getElementById('status-message');
 const exportButton = document.getElementById('export-btn');
-const exportButton = document.getElementById('export-btn');
+
 
 // Guardamos los últimos puntos obtenidos para poder exportarlos
 let currentPoints = [];
