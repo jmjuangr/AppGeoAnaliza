@@ -6,6 +6,7 @@ const resultsList = document.getElementById('results-list');
 const resultsMeta = document.getElementById('results-meta');
 const statusMessage = document.getElementById('status-message');
 const exportButton = document.getElementById('export-btn');
+const exportButton = document.getElementById('export-btn');
 
 // Guardamos los últimos puntos obtenidos para poder exportarlos
 let currentPoints = [];
@@ -38,6 +39,7 @@ export function renderPoints(points) {
   // Si no hay puntos ni columnas personalizadas, mensaje por defecto
   if (!currentPoints || currentPoints.length === 0) {
     resultsList.innerHTML = '<p class="meta">Sin resultados para esta búsqueda.</p>';
+    if (exportButton) exportButton.disabled = true;
     if (exportButton) exportButton.disabled = true;
     return;
   }

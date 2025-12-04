@@ -5,8 +5,9 @@ import { createRateLimiter } from '../utils/rateLimiter';
 type OverpassElement = {
   type: 'node' | 'way' | 'relation';
   id: number;
-  lat: number;
-  lon: number;
+  lat?: number;
+  lon?: number;
+  center?: { lat: number; lon: number };
   tags?: Record<string, string>;
 };
 
@@ -21,21 +22,54 @@ const scheduleOverpass = createRateLimiter(MIN_INTERVAL_MS);
 
 const buildQuery = (bbox: BoundingBox): string => {
   const { south, west, north, east } = bbox;
-  return `[out:json][timeout:25];node["name"](${south},${west},${north},${east});out body;`;
+  const header = '[out:json][timeout:25];';
+  const addressFilters = ['["name"]["addr:street"]', '["name"]["addr:full"]', '["name"]["addr:place"]'];
+  const buildFragments = (type: 'node' | 'way' | 'relation') =>
+    addressFilters.map((filter) => `${type}${filter}(${south},${west},${north},${east});`).join('');
+
+  return `${header}(${buildFragments('node')}${buildFragments('way')}${buildFragments('relation')});out center;`;
 };
 
-const toPoint = (element: OverpassElement): Point => ({
-  id: `${element.type}/${element.id}`,
-  name: element.tags?.name ?? null,
-  street:
-    element.tags?.['addr:street'] ??
-    element.tags?.['addr:full'] ??
-    element.tags?.['addr:place'] ??
-    null,
-  lat: element.lat,
-  lng: element.lon,
-  source: 'osm'
-});
+const resolveCoordinates = (element: OverpassElement): { lat: number; lon: number } | null => {
+  if (typeof element.lat === 'number' && typeof element.lon === 'number') {
+    return { lat: element.lat, lon: element.lon };
+  }
+  if (element.center && typeof element.center.lat === 'number' && typeof element.center.lon === 'number') {
+    return { lat: element.center.lat, lon: element.center.lon };
+  }
+  return null;
+};
+
+const buildStreet = (tags: Record<string, string> = {}): string | null => {
+  const full = tags['addr:full'];
+  if (full) return full;
+
+  const street = tags['addr:street'] ?? tags['addr:place'] ?? tags['addr:road'];
+  if (!street) return null;
+
+  const houseNumber = tags['addr:housenumber'];
+  return houseNumber ? `${street} ${houseNumber}` : street;
+};
+
+const toPoint = (element: OverpassElement): Point | null => {
+  const coordinates = resolveCoordinates(element);
+  if (!coordinates) {
+    return null;
+  }
+
+  return {
+    id: `${element.type}/${element.id}`,
+    name: element.tags?.name ?? null,
+    street: buildStreet(element.tags),
+    lat: coordinates.lat,
+    lng: coordinates.lon,
+    source: 'osm'
+  };
+};
+
+const hasStreet = (point: Point | null): point is Point & { street: string } => {
+  return Boolean(point && point.street);
+};
 
 const pickSample = <T>(items: T[], limit: number): T[] => {
   if (items.length <= limit) {
@@ -71,9 +105,7 @@ export const queryOverpassForNodes = async (
   const payload = (await response.json()) as OverpassResponse;
   const elements = payload?.elements ?? [];
 
-  const mapped = elements
-    .filter((el) => typeof el.lat === 'number' && typeof el.lon === 'number')
-    .map(toPoint);
+  const mapped = elements.map(toPoint).filter(hasStreet);
 
   return {
     totalAvailable: mapped.length,
